@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ranking Refresh-Ready Content at FlyRank — research paper</title>
+<meta name="description" content="Applied Search Intelligence internship research paper: which pages to review for refresh, in what order. Data, method, validation, ranked recommendations.">
+<style>
+  :root { --bg:#0a0f14; --ink:#eaf2ee; --muted:#8fa39b; --accent:#07f49e; --line:rgba(255,255,255,.09); --panel:rgba(255,255,255,.03); }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Georgia,"Times New Roman",serif; background:var(--bg); color:var(--ink); line-height:1.65; }
+  main { max-width:760px; margin:0 auto; padding:48px 24px 80px; }
+  .kicker { font-family:ui-monospace,monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  h1 { font-size:clamp(1.8rem,5vw,2.6rem); line-height:1.15; margin:12px 0 6px; }
+  .byline { color:var(--muted); font-size:14px; font-family:ui-monospace,monospace; margin-bottom:24px; }
+  h2 { font-size:1.2rem; margin:34px 0 8px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  p, li { font-size:16.5px; color:#d7e2dd; margin-bottom:10px; }
+  a { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:14.5px; margin:12px 0; }
+  th, td { border:1px solid var(--line); padding:7px 9px; text-align:left; }
+  th { color:var(--accent); }
+  td { color:#d7e2dd; }
+  code, .mono { font-family:ui-monospace,monospace; font-size:.92em; }
+  .box { border:1px solid var(--line); background:var(--panel); border-radius:10px; padding:14px 16px; margin:14px 0; }
+  .note { color:var(--muted); font-size:13.5px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Research paper · FlyRank ML Internship · Applied Search Intelligence</div>
+  <h1>Ranking Refresh-Ready Content</h1>
+  <div class="byline">Ahmed El-Dasoky · lane: Refresh / Content Opportunity Scoring · 2026</div>
+
+  <p><strong>Abstract.</strong> Which pages should a content team review for refresh, in what
+  order, when they can only read ~50 per pass? Working on the bundled 30,000-page anonymized
+  90-day snapshot, I frame the lane as ranking, build a transparent hand-rule baseline first, and
+  train logistic regression and random-forest models on a client-grouped holdout. Random forest
+  reaches ROC-AUC 0.750 and Precision@50 0.74 (baseline 0.627 / 0.24); the winning signals are
+  backward-looking visibility, position, and freshness. The output is a ranked,
+  human-reviewable refresh queue with reason codes — decision support for triage.</p>
+
+  <h2>1. Problem &amp; decision</h2>
+  <p>A content operator manages hundreds of pages and must decide which to review this week.
+  A wrong call costs a human's review time or, worse, lets a declining, high-demand page rot.
+  Because 16,262 of 30,000 pages (54%) are flagged declining, triage truly helps: rank the pool
+  so the highest-leverage pages surface first.</p>
+
+  <h2>2. Data &amp; safety</h2>
+  <p>Bundled <span class="mono">content_refresh_anonymized.csv</span> (30,000 pages × 44 columns,
+  fixed 90-day snapshot). Excluded: <em>provider_used</em>, <em>model_used</em> (internal
+  provenance, not outcome), <em>trend_direction</em> (defines the label), raw IDs (grouping only).
+  Leakage audit: no label-derived features, no future windows, no product flags.</p>
+
+  <h2>3. Baseline</h2>
+  <p>Transparent hand rule: +4 declining-with-demand, +2 low CTR (visible), +2 low engagement
+  (visible), −1 stale, scaled to 0–100, ranked descending, with reason codes.</p>
+  <div class="box mono">baseline on client holdout: ROC-AUC 0.627 · avg-precision 0.468 ·
+  Precision@50 0.24 · Precision@100 0.36 · recall 0.19</div>
+
+  <h2>4. Method</h2>
+  <p>Framed as ranking/scoring. Target proxy: <span class="mono">is_declining_label =
+  trend_direction=="down"</span>. Features: 16 backward-looking aggregates (impressions/clicks/
+  sessions/engagement 90d, position, CTR, freshness, word/char counts), heavy tails log-transformed.
+  Models: logistic regression, decision tree, random forest (random_state=42).</p>
+
+  <h2>5. Validation</h2>
+  <p>Client-grouped holdout (GroupShuffleSplit, 20% of clients, seed 42) — a client's pages never
+  straddle train/test, mirroring a mixed-client production queue. Same data, metric, split as the
+  baseline.</p>
+  <table>
+    <tr><th>Model</th><th>ROC-AUC</th><th>Avg-P</th><th>Pre@20</th><th>Pre@50</th><th>Pre@100</th><th>Recall</th><th>F1</th></tr>
+    <tr><td>baseline_rules</td><td>0.627</td><td>0.468</td><td>0.15</td><td>0.24</td><td>0.36</td><td>0.19</td><td>0.27</td></tr>
+    <tr><td>logistic_regression</td><td>0.700</td><td>0.522</td><td>0.35</td><td>0.40</td><td>0.44</td><td>0.57</td><td>0.57</td></tr>
+    <tr><td>decision_tree</td><td>0.742</td><td>0.575</td><td>0.55</td><td>0.62</td><td>0.60</td><td>0.72</td><td>0.63</td></tr>
+    <tr><td><strong>random_forest</strong></td><td><strong>0.750</strong></td><td><strong>0.618</strong></td><td><strong>0.65</strong></td><td><strong>0.74</strong></td><td><strong>0.72</strong></td><td><strong>0.74</strong></td><td><strong>0.64</strong></td></tr>
+  </table>
+  <p class="note">Base rate of the target: 0.542. AUC and lift over baseline are the honest
+  discrimination numbers; all models beat the base rate.</p>
+
+  <h2>6. What the model leans on</h2>
+  <p>Top features: <em>days_with_impressions</em> (0.16), <em>log_impressions_90d</em> (0.13),
+  <em>avg_position</em> (0.11), <em>content_age_days</em> (0.10). Interpretation: a page that is
+  <strong>persistently visible, aging, and under-clicking</strong> is the highest-leverage
+  refresh. Surprise: <em>search_volume</em> / <em>competition</em> rank low once observed
+  impressions and position are present — keyword demand is already folded into visibility.</p>
+
+  <h2>7. Ranked recommendation</h2>
+  <p class="mono">refresh → refresh_and_review_ctr → refresh_and_review_engagement → monitor</p>
+  <p>A FlyRank editor reads the top 20 of the queue, confirms demand (search_volume, competition)
+  and that the page is actually underperforming, then acts. Confidence: high for triage; none for
+  "will recover" — this work scores decline-risk and routes review.</p>
+
+  <h2>8. Error analysis &amp; limits</h2>
+  <p>False positives are recently-updated, high-impression pages whose labels flipped <em>down</em>
+  for demand reasons — acceptable for triage, the model reads "visible + engaged" as healthy even
+  when momentum fades. Limits: 90-day snapshot, shipped rule as label, no recovery prediction, no
+  page text or competitor signals, 30,000 pages / 44 columns only.</p>
+
+  <h2>9. Reproducibility</h2>
+  <p class="mono">pip install -r requirements.txt<br>
+  python scripts/run_all.py&nbsp;&nbsp;·&nbsp;&nbsp;jupyter nbconvert --execute work/notebooks/*.ipynb</p>
+  <p class="note">Seeds fixed at 42. Receipts committed: outputs/model_results.json,
+  outputs/model_report.md, work/outputs/action_playbook.csv.</p>
+
+  <h2>Acknowledgments &amp; data credit</h2>
+  <p>Built on the <a href="https://flyrank.ai">FlyRank ML Internship</a> dataset — anonymized,
+  observable-signals release (fixed 90-day snapshot); data governed by <span
+  class="mono">DATA_USE.md</span>. No client-identifying information is reproduced here.</p>
+</main>
+</body>
+</html>
